@@ -254,12 +254,12 @@ class MFRC522:
     return (status, backBits)
 
 
-  def MFRC522_Anticoll(self):
+  def MFRC522_Anticoll(self, selCLx=PICC_SEL_CL1):
     backData = []
 
     self.Write_MFRC522(self.BitFramingReg, 0x00)
 
-    serNum = [self.PICC_SEL_CL1, 0x20]
+    serNum = [selCLx, 0x20]
 
     (status, backData, backBits) = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, serNum)
 
@@ -292,11 +292,9 @@ class MFRC522:
     pOutData.append(self.Read_MFRC522(self.CRCResultRegM))
     return pOutData
 
-  def MFRC522_SelectTag(self, serNum):
+  def MFRC522_SelectTag(self, serNum, selCLx=PICC_SEL_CL1):
     backData = []
-    buf = []
-    buf.append(self.PICC_SEL_CL1)
-    buf.append(0x70)
+    buf = [selCLx, 0x70]
     for i in range(5):
       buf.append(serNum[i])
     pOut = self.CalulateCRC(buf)
@@ -305,10 +303,47 @@ class MFRC522:
     (status, backData, backLen) = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, buf)
 
     if status == self.MI_OK and backLen == 0x18:
-      print(f"Size: {backData[0]}")
+      selCLx2no = {self.PICC_SEL_CL1: 1, self.PICC_SEL_CL2: 2, self.PICC_SEL_CL3: 3}  # translate CLx to number
+      print(f"SelectTag: for CL{selCLx2no[selCLx]}, size: {backData[0]}")
       return backData[0]
 
     return 0
+
+  def MFRC522_SelectTagSN(self):
+    piccSelCLs = {1: self.PICC_SEL_CL1, 2: self.PICC_SEL_CL2, 3: self.PICC_SEL_CL3}
+    valid_uid = []
+
+    print()
+    # check all Cascade Level (CL) if required
+    for i, selCL in piccSelCLs.items():
+
+      print(f"Loop iter {i} and CL as {selCL}")
+
+      (status, uid) = self.MFRC522_Anticoll(selCL)
+      if status != self.MI_OK:
+        return (self.MI_ERR, [])
+      print(f"  » AntiColl CL{i}: {uid} | Status: {status}")
+
+      pdcSel = self.MFRC522_SelectTag(uid, selCL)
+      if pdcSel == 0:
+        return (self.MI_ERR, [])
+      print(f"  » PDC select: {pdcSel}")
+
+      # if first byte is 0x88 => check next Cascade Level
+      if uid[0] == self.PICC_TAG_COLL:
+        print(f"Curr UID: {valid_uid} | expand: {uid[1:4]}")
+        valid_uid.extend(uid[1:4])
+
+      # first byte is not 0x88 => do not check next CL
+      else:
+        print(f"Curr UID: {valid_uid} | expand: {uid[0:4]}")
+        valid_uid.extend(uid[0:4])
+        print(f"final UID: {valid_uid} | after CL: {i}")
+        break
+
+    return (self.MI_OK, valid_uid)
+
+
 
   def MFRC522_Auth(self, authMode, BlockAddr, Sectorkey, serNum):
     buf = []
@@ -401,4 +436,7 @@ class MFRC522:
 
     self.Write_MFRC522(self.TxAutoReg, 0x40)
     self.Write_MFRC522(self.ModeReg, 0x3D)
+
+    print("read RFCfgReg:", f"0x{self.Read_MFRC522(self.RFCfgReg):02X}")
+
     self.AntennaOn()
