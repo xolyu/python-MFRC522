@@ -153,7 +153,7 @@ class MFRC522:
     spi.transfer(self.spiDev, ((addr<<1) & 0x7E, val))
 
   def Read_MFRC522(self, addr):
-    """ Read register on PCD. """
+    """ Read register from PCD. """
     # SPI address byte -> read: 1AAAAAA0 (6-bit address)
     val = spi.transfer(self.spiDev, (((addr<<1) & 0x7E) | 0x80, 0))
     return val[1]
@@ -378,9 +378,7 @@ class MFRC522:
     self.ClearBitMask(self.Status2Reg, 0x08)
 
   def MFRC522_Read(self, blockAddr):
-    recvData = []
-    recvData.append(self.PICC_READ)
-    recvData.append(blockAddr)
+    recvData = [self.PICC_READ, blockAddr]
     pOut = self.CalulateCRC(recvData)
     recvData.append(pOut[0])
     recvData.append(pOut[1])
@@ -393,9 +391,7 @@ class MFRC522:
         print("Sector {blockAddr} {backData}")
 
   def MFRC522_Write(self, blockAddr, writeData):
-    buff = []
-    buff.append(self.PICC_WRITE)
-    buff.append(blockAddr)
+    buff = [self.PICC_WRITE, blockAddr]
     crc = self.CalulateCRC(buff)
     buff.append(crc[0])
     buff.append(crc[1])
@@ -442,7 +438,5 @@ class MFRC522:
 
     self.Write_MFRC522(self.TxAutoReg, 0x40)
     self.Write_MFRC522(self.ModeReg, 0x3D)
-
-    print("read RFCfgReg:", f"0x{self.Read_MFRC522(self.RFCfgReg):02X}")
 
     self.AntennaOn()
