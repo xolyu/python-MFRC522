@@ -2,6 +2,7 @@
 # -*- coding: utf8 -*-
 #
 #    Copyright 2014,2018 Mario Gomez <mario.gomez@teubi.co>
+#    Copyright 2023 Xolyu
 #
 #    This file is part of MFRC522-Python
 #    MFRC522-Python is a simple Python implementation for
@@ -134,7 +135,7 @@ class MFRC522:
   Reserved33      = 0x3E
   Reserved34      = 0x3F
 
-  def __init__(self, device='/dev/spidev0.0', speed=1000000, debug=True):
+  def __init__(self, device='/dev/spidev0.0', speed=1000000, debug:bool=False):
     self.debug = debug
 
     self.spiDev = spi.openSPI(device=device, speed=speed)
@@ -147,10 +148,12 @@ class MFRC522:
     self.Write_MFRC522(self.CommandReg, self.PCD_RESETPHASE)
 
   def Write_MFRC522(self, addr, val):
+    """ Write register on PCD. """
     # SPI address byte -> write: 0AAAAAA0 (6-bit address)
     spi.transfer(self.spiDev, ((addr<<1) & 0x7E, val))
 
   def Read_MFRC522(self, addr):
+    """ Read register on PCD. """
     # SPI address byte -> read: 1AAAAAA0 (6-bit address)
     val = spi.transfer(self.spiDev, (((addr<<1) & 0x7E) | 0x80, 0))
     return val[1]
@@ -303,8 +306,9 @@ class MFRC522:
     (status, backData, backLen) = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, buf)
 
     if status == self.MI_OK and backLen == 0x18:
-      selCLx2no = {self.PICC_SEL_CL1: 1, self.PICC_SEL_CL2: 2, self.PICC_SEL_CL3: 3}  # translate CLx to number
-      print(f"SelectTag: for CL{selCLx2no[selCLx]}, size: {backData[0]}")
+      if self.debug:
+        selCLx2no = {self.PICC_SEL_CL1: 1, self.PICC_SEL_CL2: 2, self.PICC_SEL_CL3: 3}  # translate CLx to number
+        print(f"SelectTag: for CL{selCLx2no[selCLx]}, size: {backData[0]}")
       return backData[0]
 
     return 0
@@ -313,32 +317,27 @@ class MFRC522:
     piccSelCLs = {1: self.PICC_SEL_CL1, 2: self.PICC_SEL_CL2, 3: self.PICC_SEL_CL3}
     valid_uid = []
 
-    print()
     # check all Cascade Level (CL) if required
     for i, selCL in piccSelCLs.items():
-
-      print(f"Loop iter {i} and CL as {selCL}")
 
       (status, uid) = self.MFRC522_Anticoll(selCL)
       if status != self.MI_OK:
         return (self.MI_ERR, [])
-      print(f"  » AntiColl CL{i}: {uid} | Status: {status}")
+      if self.debug: print("[SelectTagSN]", f"AntiColl CL{i}: {uid} | Status: {status}")
 
       pdcSel = self.MFRC522_SelectTag(uid, selCL)
       if pdcSel == 0:
         return (self.MI_ERR, [])
-      print(f"  » PDC select: {pdcSel}")
+      if self.debug: print(f"  » PDC select: {pdcSel}")
 
       # if first byte is 0x88 => check next Cascade Level
       if uid[0] == self.PICC_TAG_COLL:
-        print(f"Curr UID: {valid_uid} | expand: {uid[1:4]}")
         valid_uid.extend(uid[1:4])
 
       # first byte is not 0x88 => do not check next CL
       else:
-        print(f"Curr UID: {valid_uid} | expand: {uid[0:4]}")
         valid_uid.extend(uid[0:4])
-        print(f"final UID: {valid_uid} | after CL: {i}")
+        if self.debug: print("[SelectTagSN]", f"final UID: {valid_uid} | after CL: {i}")
         break
 
     return (self.MI_OK, valid_uid)
@@ -365,11 +364,12 @@ class MFRC522:
     # Now we start the authentication itself
     (status, backData, backLen) = self.MFRC522_ToCard(self.PCD_AUTHENT, buf)
 
-    # Check if an error occurred
-    if not(status == self.MI_OK):
-      print("AUTH ERROR!!")
-    if not (self.Read_MFRC522(self.Status2Reg) & 0x08) != 0:
-      print("AUTH ERROR(status2reg & 0x08) != 0")
+    if self.debug:
+      # Check if an error occurred
+      if not(status == self.MI_OK):
+        print("AUTH ERROR!!")
+      if not (self.Read_MFRC522(self.Status2Reg) & 0x08) != 0:
+        print("AUTH ERROR(status2reg & 0x08) != 0")
 
     # Return the status
     return status
@@ -385,10 +385,12 @@ class MFRC522:
     recvData.append(pOut[0])
     recvData.append(pOut[1])
     (status, backData, backLen) = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, recvData)
-    if not(status == self.MI_OK):
-      print("Error while reading!")
-    if len(backData) == 16:
-      print("Sector {} {}".format(blockAddr, backData))
+
+    if self.debug:
+      if not(status == self.MI_OK):
+        print("Error while reading!")
+      if len(backData) == 16:
+        print("Sector {blockAddr} {backData}")
 
   def MFRC522_Write(self, blockAddr, writeData):
     buff = []
@@ -401,7 +403,9 @@ class MFRC522:
     if not(status == self.MI_OK) or not(backLen == 4) or not((backData[0] & 0x0F) == 0x0A):
         status = self.MI_ERR
 
-    print(f"{backLen} backdata &0x0F == 0x0A {backData[0] & 0x0F}")
+    if self.debug:
+      print(f"{backLen} backdata &0x0F == 0x0A {backData[0] & 0x0F}")
+
     if status == self.MI_OK:
         buf = []
         for i in range(16):
@@ -410,10 +414,12 @@ class MFRC522:
         buf.append(crc[0])
         buf.append(crc[1])
         (status, backData, backLen) = self.MFRC522_ToCard(self.PCD_TRANSCEIVE,buf)
-        if not(status == self.MI_OK) or not(backLen == 4) or not((backData[0] & 0x0F) == 0x0A):
-            print("Error while writing")
-        if status == self.MI_OK:
-            print("Data written")
+
+        if self.debug:
+          if not(status == self.MI_OK) or not(backLen == 4) or not((backData[0] & 0x0F) == 0x0A):
+              print("Error while writing")
+          if status == self.MI_OK:
+              print("Data written")
 
   def MFRC522_DumpClassic1K(self, key, uid):
     for i in range(64):
